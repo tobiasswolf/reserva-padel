@@ -3,7 +3,7 @@ from selenium.webdriver.common.by import By
 import time
 import datetime
 import os
-import requests  # ✅ nuevo
+import requests
 
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
@@ -18,8 +18,7 @@ PASSWORD = os.getenv("PASSWORD")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-
-# ========= TELEGRAM FUNCTION =========
+# ========= TELEGRAM =========
 def enviar_telegram(mensaje):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -27,9 +26,8 @@ def enviar_telegram(mensaje):
             "chat_id": CHAT_ID,
             "text": mensaje
         })
-    except:
-        print("⚠️ Error enviando Telegram")
-
+    except Exception as e:
+        print("❌ Error Telegram:", e)
 
 # ========= HEADLESS =========
 options = Options()
@@ -42,39 +40,13 @@ options.add_argument("--no-sandbox")
 hoy = datetime.datetime.now()
 target_day = hoy + datetime.timedelta(days=7)
 
-dias_map = {
-    "Monday": "lunes",
-    "Tuesday": "martes",
-    "Wednesday": "miercoles",
-    "Thursday": "jueves",
-    "Friday": "viernes",
-    "Saturday": "sabado",
-    "Sunday": "domingo"
-}
-
-dia_objetivo = dias_map[target_day.strftime("%A")]
-
-print(f"📅 Día objetivo: {dia_objetivo}")
-
-# ========= ORDEN =========
-orden_dias = []
-
-if dia_objetivo in ["martes", "miercoles", "jueves"]:
-    orden_dias.append(dia_objetivo)
-
-for d in ["martes", "miercoles", "jueves"]:
-    if d != dia_objetivo:
-        orden_dias.append(d)
-
-orden_dias.append("lunes")
-
-# ========= ESPERA =========
+# ========= ESPERA HASTA MEDIANOCHE =========
 target_time = datetime.datetime.combine(datetime.date.today(), datetime.time(0,0,3))
 
 while datetime.datetime.now() < target_time:
     time.sleep(0.05)
 
-print("⏰ Ejecutando...")
+print("⏰ Ejecutando post medianoche...")
 
 # ========= DRIVER =========
 driver = webdriver.Chrome(options=options)
@@ -82,13 +54,14 @@ driver.get(URL)
 
 wait = WebDriverWait(driver, 15)
 
-# ========= LOGIN =========
+# ========= COOKIES =========
 time.sleep(1)
 try:
     driver.find_element(By.XPATH, "//button[contains(text(),'Agree')]").click()
 except:
     pass
 
+# ========= LOGIN =========
 flecha = wait.until(EC.presence_of_element_located((By.CLASS_NAME, "mbri-down")))
 driver.execute_script("arguments[0].click();", flecha)
 
@@ -100,33 +73,90 @@ driver.find_element(By.XPATH, "//button[contains(text(),'Enviar')]").click()
 
 time.sleep(5)
 
-# ========= CHECK RESERVA =========
-mis_reservas = driver.find_elements(
-    By.XPATH,
-    "//div[contains(@class,'celda') and contains(@class,'reservada-usuario')]"
-)
+# ========= FUNCION DETECTAR RESERVA =========
+def detectar_reserva_existente():
+    pistas = [
+        ("pista-58", "Pista 2"),
+        ("pista-30", "Pista 1")
+    ]
 
-if len(mis_reservas) > 0:
-    r = mis_reservas[0]
-    dia = r.get_attribute("data-dia")
-    hora = r.get_attribute("data-hora")
+    for pista_id, pista_nombre in pistas:
+        try:
+            driver.find_element(By.ID, pista_id).click()
+            time.sleep(0.5)
 
-    mensaje = f"⚠️ YA TIENES RESERVA\nDía: {dia}\nHora: {hora[:2]}:{hora[2:]}"
+            reservas = driver.find_elements(
+                By.XPATH,
+                "//div[contains(@class,'celda') and contains(@class,'reservada-usuario')]"
+            )
+
+            reservas_visibles = [r for r in reservas if r.is_displayed()]
+
+            if reservas_visibles:
+                r = reservas_visibles[0]
+                dia = r.get_attribute("data-dia")
+                hora = r.get_attribute("data-hora")
+
+                hora_fmt = f"{hora[:2]}:{hora[2:]}"
+                return (dia, hora_fmt, pista_nombre)
+
+        except:
+            continue
+
+    return None
+
+# ========= CHECK SEMANA ACTUAL =========
+reserva = detectar_reserva_existente()
+
+if reserva:
+    dia, hora, pista = reserva
+
+    mensaje = f"""⚠️ YA TENES RESERVA (SEMANA ACTUAL)
+Día: {dia}
+Hora: {hora}
+Pista: {pista}"""
+
     print(mensaje)
     enviar_telegram(mensaje)
-
     driver.quit()
     exit()
+
+print("✅ Sin reservas en semana actual")
 
 # ========= CAMBIO SEMANA =========
 fecha_str = target_day.strftime("%d/%m/%Y")
 
-driver.execute_script(f"document.getElementById('calendario-selector-semana').value = '{fecha_str}';")
-driver.execute_script("$('#calendario-selector-semana').trigger('change');")
+driver.execute_script(f"""
+document.getElementById('calendario-selector-semana').value = '{fecha_str}';
+""")
+
+driver.execute_script("""
+$('#calendario-selector-semana').trigger('change');
+""")
 
 time.sleep(3)
 
-# ========= FUNCIÓN =========
+print(f"✅ Semana siguiente cargada: {fecha_str}")
+
+# ========= CHECK SEMANA SIGUIENTE =========
+reserva = detectar_reserva_existente()
+
+if reserva:
+    dia, hora, pista = reserva
+
+    mensaje = f"""⚠️ YA TENES RESERVA (SEMANA SIGUIENTE)
+Día: {dia}
+Hora: {hora}
+Pista: {pista}"""
+
+    print(mensaje)
+    enviar_telegram(mensaje)
+    driver.quit()
+    exit()
+
+print("✅ Sin reservas en semana siguiente → buscar")
+
+# ========= FUNCION RESERVA =========
 def intentar_reserva(dia, pista_id):
     try:
         pista_nombre = "Pista 2" if pista_id == "pista-58" else "Pista 1"
@@ -139,18 +169,22 @@ def intentar_reserva(dia, pista_id):
             f"//div[@data-dia='{dia}' and @data-hora='2030']"
         )
 
-        slots = [s for s in slots if s.is_displayed()]
+        slots_visibles = [s for s in slots if s.is_displayed()]
 
-        if not slots:
+        if not slots_visibles:
             return False
 
-        slot = slots[0]
+        slot = slots_visibles[0]
 
         driver.execute_script("arguments[0].click();", slot)
         time.sleep(0.8)
 
         if "reservada-usuario" in slot.get_attribute("class"):
-            mensaje = f"✅ RESERVA CONFIRMADA\nDía: {dia}\nHora: 20:30\nPista: {pista_nombre}"
+            mensaje = f"""✅ RESERVA CONFIRMADA
+Día: {dia}
+Hora: 20:30
+Pista: {pista_nombre}"""
+
             print(mensaje)
             enviar_telegram(mensaje)
             return True
@@ -161,14 +195,19 @@ def intentar_reserva(dia, pista_id):
         return False
 
 # ========= MODO COMPETITIVO =========
+dias_orden = ["martes", "miercoles", "jueves", "lunes"]
+
 inicio = time.time()
 reserva = False
 
 while time.time() - inicio < 5 and not reserva:
-    for dia in orden_dias:
+    for dia in dias_orden:
+        print(f"⚡ Intentando {dia}")
+
         if intentar_reserva(dia, "pista-58"):
             reserva = True
             break
+
         if intentar_reserva(dia, "pista-30"):
             reserva = True
             break
