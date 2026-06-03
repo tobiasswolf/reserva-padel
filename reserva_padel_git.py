@@ -238,6 +238,9 @@ while time.time() - inicio < 5 and not reserva_ok:
 
     time.sleep(0.12)
 
+print("TOKEN (debug):", TELEGRAM_TOKEN)
+print("CHAT_ID (debug):", CHAT_ID)
+
 # ========= RESULTADO FINAL =========
 if not reserva_ok:
     mensaje = "❌ NO SE ENCONTRÓ DISPONIBILIDAD"
