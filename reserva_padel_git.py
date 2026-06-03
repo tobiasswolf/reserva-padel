@@ -25,7 +25,10 @@ def enviar_telegram(mensaje):
             "chat_id": CHAT_ID,
             "text": mensaje
         })
-        print("📤 Telegram:", response.status_code)
+
+        print("📤 Telegram status:", response.status_code)
+        print("📤 Telegram response:", response.text)
+
     except Exception as e:
         print("❌ Error Telegram:", e)
 
@@ -39,6 +42,10 @@ options.add_argument("--no-sandbox")
 # ========= FECHA =========
 hoy = datetime.datetime.now()
 target_day = hoy + datetime.timedelta(days=7)
+
+# 🔑 calcular lunes semana actual
+semana_actual = hoy - datetime.timedelta(days=hoy.weekday())
+semana_siguiente = semana_actual + datetime.timedelta(days=7)
 
 # ========= ESPERA =========
 target_time = datetime.datetime.combine(datetime.date.today(), datetime.time(0,0,3))
@@ -73,12 +80,24 @@ driver.find_element(By.XPATH, "//button[contains(text(),'Enviar')]").click()
 
 time.sleep(5)
 
-# ========= DETECTAR RESERVA =========
-def detectar_reserva_existente():
+# ========= DETECTAR RESERVA (CON FILTRO TEMPORAL) =========
+def detectar_reserva_existente(semana_base):
     pistas = [
         ("pista-58", "Pista 2"),
         ("pista-30", "Pista 1")
     ]
+
+    ahora = datetime.datetime.now()
+
+    dias_map = {
+        "lunes": 0,
+        "martes": 1,
+        "miercoles": 2,
+        "jueves": 3,
+        "viernes": 4,
+        "sabado": 5,
+        "domingo": 6
+    }
 
     for pista_id, pista_nombre in pistas:
         try:
@@ -90,15 +109,26 @@ def detectar_reserva_existente():
                 "//div[contains(@class,'celda') and contains(@class,'reservada-usuario')]"
             )
 
-            visibles = [r for r in reservas if r.is_displayed()]
+            for r in reservas:
+                if not r.is_displayed():
+                    continue
 
-            if visibles:
-                r = visibles[0]
                 dia = r.get_attribute("data-dia")
                 hora = r.get_attribute("data-hora")
 
-                hora_fmt = f"{hora[:2]}:{hora[2:]}"
-                return (dia, hora_fmt, pista_nombre)
+                dia_idx = dias_map[dia]
+                fecha_reserva = semana_base + datetime.timedelta(days=dia_idx)
+
+                hora_dt = datetime.datetime.strptime(hora, "%H%M")
+                fecha_reserva = fecha_reserva.replace(
+                    hour=hora_dt.hour,
+                    minute=hora_dt.minute
+                )
+
+                # ✅ SOLO FUTURO
+                if fecha_reserva >= ahora:
+                    hora_fmt = f"{hora[:2]}:{hora[2:]}"
+                    return (dia, hora_fmt, pista_nombre)
 
         except:
             continue
@@ -106,7 +136,7 @@ def detectar_reserva_existente():
     return None
 
 # ========= CHECK SEMANA ACTUAL =========
-reserva = detectar_reserva_existente()
+reserva = detectar_reserva_existente(semana_actual)
 
 if reserva:
     dia, hora, pista = reserva
@@ -135,7 +165,7 @@ $('#calendario-selector-semana').trigger('change');
 time.sleep(3)
 
 # ========= CHECK SEMANA SIGUIENTE =========
-reserva = detectar_reserva_existente()
+reserva = detectar_reserva_existente(semana_siguiente)
 
 if reserva:
     dia, hora, pista = reserva
