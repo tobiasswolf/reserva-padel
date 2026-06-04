@@ -79,63 +79,51 @@ for user in usuarios:
     # ========= DEBUG DETECCION =========
     def detectar_reserva_existente(semana_base):
 
-        pistas = [("pista-58", "Pista 2"), ("pista-30", "Pista 1")]
-        ahora = datetime.datetime.now()
+    pistas = [("pista-58", "Pista 2"), ("pista-30", "Pista 1")]
+    ahora = datetime.datetime.now()
 
-        dias_map = {
-            "lunes": 0, "martes": 1, "miercoles": 2,
-            "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
-        }
+    dias_map = {
+        "lunes": 0, "martes": 1, "miercoles": 2,
+        "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
+    }
 
-        for pista_id, pista_nombre in pistas:
-            try:
-                print(f"\n🔍 Revisando {pista_nombre}")
+    for pista_id, pista_nombre in pistas:
+        try:
+            driver.find_element(By.ID, pista_id).click()
+            time.sleep(1.2)  # ✅ mantener
 
-                driver.find_element(By.ID, pista_id).click()
-                time.sleep(1.5)
+            # ✅ SOLO TUS RESERVAS
+            reservas = driver.find_elements(
+                By.XPATH,
+                "//div[contains(@class,'celda') and contains(@class,'reservada-usuario')]"
+            )
 
-                reservas = driver.find_elements(
-                    By.XPATH,
-                    "//div[contains(@class,'celda') and contains(@class,'reservada')]"
-                )
+            for r in reservas:
+                try:
+                    dia = r.get_attribute("data-dia")
+                    hora = r.get_attribute("data-hora")
 
-                print(f"➡️ Encontradas {len(reservas)} reservas")
+                    fecha = semana_base + datetime.timedelta(days=dias_map[dia])
+                    hora_dt = datetime.datetime.strptime(hora, "%H%M")
 
-                for r in reservas:
-                    try:
-                        dia = r.get_attribute("data-dia")
-                        hora = r.get_attribute("data-hora")
+                    fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
 
-                        print(f"   👉 Detectada: {dia} {hora}")
+                    # ✅ filtro temporal correcto
+                    if fecha >= ahora:
+                        return (
+                            dia,
+                            f"{hora[:2]}:{hora[2:]}",
+                            pista_nombre,
+                            fecha.strftime("%d/%m")
+                        )
 
-                        fecha = semana_base + datetime.timedelta(days=dias_map[dia])
-                        hora_dt = datetime.datetime.strptime(hora, "%H%M")
+                except:
+                    continue
 
-                        fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
+        except:
+            continue
 
-                        print(f"   🧠 Fecha calculada: {fecha}")
-                        print(f"   🕒 Ahora: {ahora}")
-
-                        if fecha >= ahora:
-                            print("   ✅ ES FUTURA → válida")
-
-                            return (
-                                dia,
-                                f"{hora[:2]}:{hora[2:]}",
-                                pista_nombre,
-                                fecha.strftime("%d/%m")
-                            )
-                        else:
-                            print("   ⛔ Es pasada → ignorar")
-
-                    except Exception as e:
-                        print("   ❌ Error en reserva:", e)
-
-            except Exception as e:
-                print("❌ Error pista:", e)
-
-        print("❌ No detectó reservas válidas")
-        return None
+    return None
 
     # ========= TEST SEMANA ACTUAL =========
     print("\n🟢 CHECK SEMANA ACTUAL")
