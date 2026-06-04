@@ -15,8 +15,10 @@ URL = "https://ociopadel.es"
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
 usuarios = json.loads(os.getenv("USERS_JSON"))
 
+# ========= TELEGRAM =========
 def enviar_telegram(mensaje):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -27,19 +29,23 @@ def enviar_telegram(mensaje):
     except Exception as e:
         print("❌ Error Telegram:", e)
 
+# ========= HORA =========
 hora_ejecucion = datetime.datetime.now().strftime("%H:%M")
 
+# ========= HEADLESS =========
 options = Options()
 options.add_argument("--headless=new")
 options.add_argument("--window-size=1920,1080")
 options.add_argument("--no-sandbox")
 
+# ========= FECHA =========
 hoy = datetime.datetime.now()
 target_day = hoy + datetime.timedelta(days=7)
 
 semana_actual = hoy - datetime.timedelta(days=hoy.weekday())
 semana_siguiente = semana_actual + datetime.timedelta(days=7)
 
+# ========= ESPERA =========
 target_time = datetime.datetime.combine(datetime.date.today(), datetime.time(0,0,3))
 
 while datetime.datetime.now() < target_time:
@@ -51,14 +57,13 @@ for user in usuarios:
     USERNAME = user["username"]
     PASSWORD = user["password"]
 
-    print(f"\n\n====================")
-    print(f"👤 Usuario: {USERNAME}")
-    print(f"====================")
+    print(f"👤 Ejecutando para {USERNAME}")
 
     driver = webdriver.Chrome(options=options)
     driver.get(URL)
     wait = WebDriverWait(driver, 15)
 
+    # ========= LOGIN =========
     time.sleep(1)
     try:
         driver.find_element(By.XPATH, "//button[contains(text(),'Agree')]").click()
@@ -76,63 +81,73 @@ for user in usuarios:
 
     time.sleep(5)
 
-    # ========= DEBUG DETECCION =========
+    # ========= DETECCIÓN =========
     def detectar_reserva_existente(semana_base):
 
-    pistas = [("pista-58", "Pista 2"), ("pista-30", "Pista 1")]
-    ahora = datetime.datetime.now()
+        pistas = [("pista-58", "Pista 2"), ("pista-30", "Pista 1")]
+        ahora = datetime.datetime.now()
 
-    dias_map = {
-        "lunes": 0, "martes": 1, "miercoles": 2,
-        "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
-    }
+        dias_map = {
+            "lunes": 0, "martes": 1, "miercoles": 2,
+            "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
+        }
 
-    for pista_id, pista_nombre in pistas:
-        try:
-            driver.find_element(By.ID, pista_id).click()
-            time.sleep(1.2)  # ✅ mantener
+        for pista_id, pista_nombre in pistas:
+            try:
+                driver.find_element(By.ID, pista_id).click()
+                time.sleep(1.2)
 
-            # ✅ SOLO TUS RESERVAS
-            reservas = driver.find_elements(
-                By.XPATH,
-                "//div[contains(@class,'celda') and contains(@class,'reservada-usuario')]"
-            )
+                reservas = driver.find_elements(
+                    By.XPATH,
+                    "//div[contains(@class,'celda') and contains(@class,'reservada-usuario')]"
+                )
 
-            for r in reservas:
-                try:
-                    dia = r.get_attribute("data-dia")
-                    hora = r.get_attribute("data-hora")
+                for r in reservas:
+                    try:
+                        dia = r.get_attribute("data-dia")
+                        hora = r.get_attribute("data-hora")
 
-                    fecha = semana_base + datetime.timedelta(days=dias_map[dia])
-                    hora_dt = datetime.datetime.strptime(hora, "%H%M")
+                        fecha = semana_base + datetime.timedelta(days=dias_map[dia])
+                        hora_dt = datetime.datetime.strptime(hora, "%H%M")
 
-                    fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
-
-                    # ✅ filtro temporal correcto
-                    if fecha >= ahora:
-                        return (
-                            dia,
-                            f"{hora[:2]}:{hora[2:]}",
-                            pista_nombre,
-                            fecha.strftime("%d/%m")
+                        fecha = fecha.replace(
+                            hour=hora_dt.hour,
+                            minute=hora_dt.minute
                         )
 
-                except:
-                    continue
+                        if fecha >= ahora:
+                            return (
+                                dia,
+                                f"{hora[:2]}:{hora[2:]}",
+                                pista_nombre,
+                                fecha.strftime("%d/%m")
+                            )
 
-        except:
-            continue
+                    except:
+                        continue
 
-    return None
+            except:
+                continue
 
-    # ========= TEST SEMANA ACTUAL =========
-    print("\n🟢 CHECK SEMANA ACTUAL")
+        return None
+
+    # ========= CHECK SEMANA ACTUAL =========
     reserva = detectar_reserva_existente(semana_actual)
 
     if reserva:
-        print("🔥 DETECTADA EN SEMANA ACTUAL:", reserva)
-    else:
-        print("❌ NO detectada en semana actual")
+        dia, hora, pista, fecha = reserva
+
+        mensaje = f"""⚠️ YA TENES RESERVA
+Usuario: {USERNAME}
+Horario ejecución: {hora_ejecucion}
+
+Día: {dia} ({fecha})
+Hora: {hora}
+Pista: {pista}"""
+
+        enviar_telegram(mensaje)
+        driver.quit()
+        continue
 
     # ========= CAMBIO SEMANA =========
     fecha_str = target_day.strftime("%d/%m/%Y")
@@ -140,17 +155,99 @@ for user in usuarios:
     driver.execute_script(f"""
     document.getElementById('calendario-selector-semana').value = '{fecha_str}';
     """)
+
     driver.execute_script("$('#calendario-selector-semana').trigger('change');")
 
-    time.sleep(4)
+    time.sleep(3)
 
-    # ========= TEST SEMANA SIGUIENTE =========
-    print("\n🔵 CHECK SEMANA SIGUIENTE")
+    # ========= CHECK SEMANA SIGUIENTE =========
     reserva = detectar_reserva_existente(semana_siguiente)
 
     if reserva:
-        print("🔥 DETECTADA EN SEMANA SIGUIENTE:", reserva)
-    else:
-        print("❌ NO detectada en semana siguiente")
+        dia, hora, pista, fecha = reserva
+
+        mensaje = f"""⚠️ YA TENES RESERVA
+Usuario: {USERNAME}
+Horario ejecución: {hora_ejecucion}
+
+Día: {dia} ({fecha})
+Hora: {hora}
+Pista: {pista}"""
+
+        enviar_telegram(mensaje)
+        driver.quit()
+        continue
+
+    # ========= INTENTO RESERVA =========
+    def intentar_reserva(dia, pista_id):
+        try:
+            pista_nombre = "Pista 2" if pista_id == "pista-58" else "Pista 1"
+
+            driver.find_element(By.ID, pista_id).click()
+            time.sleep(0.3)
+
+            slots = driver.find_elements(
+                By.XPATH,
+                f"//div[@data-dia='{dia}' and @data-hora='2030']"
+            )
+
+            slots = [s for s in slots if s.is_displayed()]
+
+            if not slots:
+                return False
+
+            slot = slots[0]
+
+            driver.execute_script("arguments[0].click();", slot)
+            time.sleep(0.8)
+
+            if "reservada-usuario" in slot.get_attribute("class"):
+
+                dias_map = {
+                    "lunes": 0, "martes": 1, "miercoles": 2,
+                    "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
+                }
+
+                fecha = semana_siguiente + datetime.timedelta(days=dias_map[dia])
+                fecha_fmt = fecha.strftime("%d/%m")
+
+                mensaje = f"""✅ RESERVA CONFIRMADA
+Usuario: {USERNAME}
+Horario ejecución: {hora_ejecucion}
+
+Día: {dia} ({fecha_fmt})
+Hora: 20:30
+Pista: {pista_nombre}"""
+
+                enviar_telegram(mensaje)
+                return True
+
+            return False
+
+        except:
+            return False
+
+    # ========= MODO COMPETITIVO =========
+    dias = ["martes", "miercoles", "jueves", "lunes"]
+
+    inicio = time.time()
+    ok = False
+
+    while time.time() - inicio < 5 and not ok:
+        for dia in dias:
+            if intentar_reserva(dia, "pista-58"):
+                ok = True
+                break
+            if intentar_reserva(dia, "pista-30"):
+                ok = True
+                break
+        time.sleep(0.12)
+
+    if not ok:
+        mensaje = f"""❌ NO SE ENCONTRÓ DISPONIBILIDAD
+Usuario: {USERNAME}
+Horario ejecución: {hora_ejecucion}"""
+
+        enviar_telegram(mensaje)
 
     driver.quit()
