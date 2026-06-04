@@ -61,12 +61,12 @@ for user in usuarios:
     log(f"👤 Usuario: {USERNAME}")
 
     driver = webdriver.Chrome(options=options)
-    wait = WebDriverWait(driver, 15)
+    wait = WebDriverWait(driver, 20)
     actions = ActionChains(driver)
 
     driver.get(URL)
 
-    # LOGIN
+    # ========= LOGIN =========
     time.sleep(1)
     try:
         driver.find_element(By.XPATH, "//button[contains(text(),'Agree')]").click()
@@ -75,6 +75,7 @@ for user in usuarios:
 
     flecha = wait.until(EC.presence_of_element_located((By.CLASS_NAME, "mbri-down")))
     driver.execute_script("arguments[0].click();", flecha)
+
     time.sleep(2)
 
     wait.until(EC.presence_of_element_located((By.ID, "email-formbuilder-2"))).send_keys(USERNAME)
@@ -83,9 +84,16 @@ for user in usuarios:
 
     time.sleep(5)
 
-    # ✅ esperar calendario
-    log("Esperando calendario...")
-    wait.until(EC.presence_of_element_located((By.CLASS_NAME, "celda")))
+    # ========= ESPERA ROBUSTA =========
+    log("Esperando interfaz...")
+
+    wait.until(EC.presence_of_element_located((By.ID, "pista-58")))
+    driver.find_element(By.ID, "pista-58").click()
+
+    time.sleep(1)
+
+    wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(@class,'celda')]")))
+
     log("✅ Calendario cargado")
 
     # ========= DETECCIÓN =========
@@ -99,7 +107,7 @@ for user in usuarios:
                 log(f"🎾 Revisando {pista_nombre}")
 
                 driver.find_element(By.ID, pista_id).click()
-                time.sleep(1.5)
+                time.sleep(1)
 
                 celdas = driver.find_elements(By.XPATH, "//div[contains(@class,'celda')]")
 
@@ -121,11 +129,11 @@ for user in usuarios:
                         if fecha < ahora:
                             continue
 
-                        # ✅ Hover
+                        # ✅ HOVER
                         actions.move_to_element(c).perform()
-                        time.sleep(1)
+                        time.sleep(0.8)
 
-                        # ✅ Popover
+                        # ✅ LEER POPOVER
                         try:
                             pop = wait.until(
                                 EC.presence_of_element_located((By.CLASS_NAME, "popover-body"))
@@ -158,10 +166,10 @@ for user in usuarios:
     # ========= SEMANA ACTUAL =========
     reserva = detectar_reserva(semana_actual)
 
-    # ========= CAMBIO SEMANA =========
+    # ========= SEMANA SIGUIENTE =========
     if not reserva:
 
-        log("➡️ Cambiando a semana siguiente...")
+        log("➡️ Cambiando semana...")
 
         fecha_str = target_day.strftime("%d/%m/%Y")
 
@@ -175,18 +183,17 @@ for user in usuarios:
                 arguments[0].dispatchEvent(new Event('change'));
             """, selector, fecha_str)
 
-            log("✅ Cambio de semana OK")
+            log("✅ Semana cambiada")
 
         except Exception as e:
             log(f"❌ Error cambio semana: {e}")
 
-        time.sleep(4)
+        time.sleep(3)
 
         reserva = detectar_reserva(semana_siguiente)
 
     # ========= RESULTADO =========
     if reserva:
-
         dia, hora, pista, fecha = reserva
 
         mensaje = f"""⚠️ YA TENES RESERVA
@@ -197,12 +204,11 @@ Día: {dia} ({fecha})
 Hora: {hora}
 Pista: {pista}"""
 
-        log("📩 Enviando Telegram (reserva encontrada)")
+        log("📩 Enviando notificación de reserva")
         enviar_telegram(mensaje)
 
     else:
-
-        log("❌ NO se encontró reserva")
+        log("❌ No se encontró reserva")
 
         mensaje = f"""❌ NO SE ENCONTRÓ DISPONIBILIDAD
 Usuario: {USERNAME}
