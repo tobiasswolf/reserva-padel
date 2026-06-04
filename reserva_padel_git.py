@@ -15,25 +15,25 @@ URL = "https://ociopadel.es"
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-usuarios = json.loads(os.getenv("USERS_JSON"))
 
-# ========= LOG =========
-def log(msg):
-    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
+# ✅ USUARIOS (JSON desde GitHub)
+usuarios = json.loads(os.getenv("USERS_JSON"))
 
 # ========= TELEGRAM =========
 def enviar_telegram(mensaje):
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": mensaje}
-        )
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "text": mensaje
+        })
     except Exception as e:
-        log(f"❌ Error Telegram: {e}")
+        print("❌ Error Telegram:", e)
 
+# ========= HORA =========
 hora_ejecucion = datetime.datetime.now().strftime("%H:%M")
 
-# ========= CHROME =========
+# ========= HEADLESS =========
 options = Options()
 options.add_argument("--headless=new")
 options.add_argument("--window-size=1920,1080")
@@ -46,25 +46,26 @@ target_day = hoy + datetime.timedelta(days=7)
 semana_actual = hoy - datetime.timedelta(days=hoy.weekday())
 semana_siguiente = semana_actual + datetime.timedelta(days=7)
 
-dias_map = {
-    "lunes": 0, "martes": 1, "miercoles": 2,
-    "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
-}
+# ========= ESPERA =========
+target_time = datetime.datetime.combine(datetime.date.today(), datetime.time(0,0,3))
 
-# ========= LOOP USERS =========
+while datetime.datetime.now() < target_time:
+    time.sleep(0.05)
+
+# ========= LOOP USUARIOS =========
 for user in usuarios:
 
     USERNAME = user["username"]
     PASSWORD = user["password"]
 
-    log(f"👤 Usuario: {USERNAME}")
+    print(f"👤 Ejecutando para {USERNAME}")
 
     driver = webdriver.Chrome(options=options)
-    wait = WebDriverWait(driver, 15)
-
     driver.get(URL)
 
-    # LOGIN
+    wait = WebDriverWait(driver, 15)
+
+    # ========= LOGIN =========
     time.sleep(1)
     try:
         driver.find_element(By.XPATH, "//button[contains(text(),'Agree')]").click()
@@ -82,50 +83,44 @@ for user in usuarios:
 
     time.sleep(5)
 
-    # ✅ esperar interfaz
-    wait.until(EC.presence_of_element_located((By.ID, "pista-58")))
-    driver.find_element(By.ID, "pista-58").click()
-    time.sleep(1)
-
-    wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(@class,'celda')]")))
-
-    # ========= DETECCION =========
+    # ========= DETECCIÓN =========
     def detectar_reserva_existente(semana_base):
-
         pistas = [("pista-58", "Pista 2"), ("pista-30", "Pista 1")]
         ahora = datetime.datetime.now()
+
+        dias_map = {
+            "lunes": 0, "martes": 1, "miercoles": 2,
+            "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
+        }
 
         for pista_id, pista_nombre in pistas:
             try:
                 driver.find_element(By.ID, pista_id).click()
-                time.sleep(1)
+                time.sleep(0.4)
 
                 reservas = driver.find_elements(
                     By.XPATH,
-                    "//div[contains(@class,'reservada-usuario')]"
+                    "//div[contains(@class,'celda') and contains(@class,'reservada-usuario')]"
                 )
 
                 for r in reservas:
-                    try:
-                        dia = r.get_attribute("data-dia")
-                        hora = r.get_attribute("data-hora")
-
-                        fecha = semana_base + datetime.timedelta(days=dias_map[dia])
-
-                        hora_dt = datetime.datetime.strptime(hora, "%H%M")
-                        fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
-
-                        if fecha >= ahora:
-                            return (
-                                dia,
-                                f"{hora[:2]}:{hora[2:]}",
-                                pista_nombre,
-                                fecha.strftime("%d/%m")
-                            )
-
-                    except:
+                    if not r.is_displayed():
                         continue
 
+                    dia = r.get_attribute("data-dia")
+                    hora = r.get_attribute("data-hora")
+
+                    fecha = semana_base + datetime.timedelta(days=dias_map[dia])
+                    hora_dt = datetime.datetime.strptime(hora, "%H%M")
+                    fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
+
+                    if fecha >= ahora:
+                        return (
+                            dia,
+                            f"{hora[:2]}:{hora[2:]}",
+                            pista_nombre,
+                            fecha.strftime("%d/%m")
+                        )
             except:
                 continue
 
@@ -152,18 +147,11 @@ Pista: {pista}"""
     # ========= CAMBIO SEMANA =========
     fecha_str = target_day.strftime("%d/%m/%Y")
 
-    try:
-        selector = wait.until(
-            EC.presence_of_element_located((By.ID, "calendario-selector-semana"))
-        )
+    driver.execute_script(f"""
+    document.getElementById('calendario-selector-semana').value = '{fecha_str}';
+    """)
 
-        driver.execute_script("""
-            arguments[0].value = arguments[1];
-            arguments[0].dispatchEvent(new Event('change'));
-        """, selector, fecha_str)
-
-    except Exception as e:
-        log(f"❌ Error al cambiar semana: {e}")
+    driver.execute_script("$('#calendario-selector-semana').trigger('change');")
 
     time.sleep(3)
 
@@ -185,7 +173,7 @@ Pista: {pista}"""
         driver.quit()
         continue
 
-    # ========= INTENTAR =========
+    # ========= INTENTO =========
     def intentar_reserva(dia, pista_id):
         try:
             pista_nombre = "Pista 2" if pista_id == "pista-58" else "Pista 1"
@@ -210,13 +198,19 @@ Pista: {pista}"""
 
             if "reservada-usuario" in slot.get_attribute("class"):
 
+                dias_map = {
+                    "lunes": 0, "martes": 1, "miercoles": 2,
+                    "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
+                }
+
                 fecha = semana_siguiente + datetime.timedelta(days=dias_map[dia])
+                fecha_fmt = fecha.strftime("%d/%m")
 
                 mensaje = f"""✅ RESERVA CONFIRMADA
 Usuario: {USERNAME}
 Horario ejecución: {hora_ejecucion}
 
-Día: {dia} ({fecha.strftime("%d/%m")})
+Día: {dia} ({fecha_fmt})
 Hora: 20:30
 Pista: {pista_nombre}"""
 
@@ -228,6 +222,7 @@ Pista: {pista_nombre}"""
         except:
             return False
 
+    # ========= COMPETITIVO =========
     dias = ["martes", "miercoles", "jueves", "lunes"]
 
     inicio = time.time()
@@ -251,4 +246,3 @@ Horario ejecución: {hora_ejecucion}"""
         enviar_telegram(mensaje)
 
     driver.quit()
-``
