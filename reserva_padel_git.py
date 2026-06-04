@@ -15,8 +15,6 @@ URL = "https://ociopadel.es"
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# ✅ USUARIOS (JSON desde GitHub)
 usuarios = json.loads(os.getenv("USERS_JSON"))
 
 # ========= TELEGRAM =========
@@ -48,7 +46,6 @@ semana_siguiente = semana_actual + datetime.timedelta(days=7)
 
 # ========= ESPERA =========
 target_time = datetime.datetime.combine(datetime.date.today(), datetime.time(0,0,3))
-
 while datetime.datetime.now() < target_time:
     time.sleep(0.05)
 
@@ -62,7 +59,6 @@ for user in usuarios:
 
     driver = webdriver.Chrome(options=options)
     driver.get(URL)
-
     wait = WebDriverWait(driver, 15)
 
     # ========= LOGIN =========
@@ -83,7 +79,7 @@ for user in usuarios:
 
     time.sleep(5)
 
-    # ========= DETECCIÓN =========
+    # ========= DETECCION =========
     def detectar_reserva_existente(semana_base):
         pistas = [("pista-58", "Pista 2"), ("pista-30", "Pista 1")]
         ahora = datetime.datetime.now()
@@ -96,7 +92,7 @@ for user in usuarios:
         for pista_id, pista_nombre in pistas:
             try:
                 driver.find_element(By.ID, pista_id).click()
-                time.sleep(0.4)
+                time.sleep(1.2)  # ✅ FIX render headless
 
                 reservas = driver.find_elements(
                     By.XPATH,
@@ -104,29 +100,30 @@ for user in usuarios:
                 )
 
                 for r in reservas:
-                    if not r.is_displayed():
+                    try:
+                        dia = r.get_attribute("data-dia")
+                        hora = r.get_attribute("data-hora")
+
+                        fecha = semana_base + datetime.timedelta(days=dias_map[dia])
+                        hora_dt = datetime.datetime.strptime(hora, "%H%M")
+                        fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
+
+                        if fecha >= ahora:
+                            return (
+                                dia,
+                                f"{hora[:2]}:{hora[2:]}",
+                                pista_nombre,
+                                fecha.strftime("%d/%m")
+                            )
+                    except:
                         continue
 
-                    dia = r.get_attribute("data-dia")
-                    hora = r.get_attribute("data-hora")
-
-                    fecha = semana_base + datetime.timedelta(days=dias_map[dia])
-                    hora_dt = datetime.datetime.strptime(hora, "%H%M")
-                    fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
-
-                    if fecha >= ahora:
-                        return (
-                            dia,
-                            f"{hora[:2]}:{hora[2:]}",
-                            pista_nombre,
-                            fecha.strftime("%d/%m")
-                        )
             except:
                 continue
 
         return None
 
-    # ========= CHECK ACTUAL =========
+    # ========= CHECK SEMANA ACTUAL =========
     reserva = detectar_reserva_existente(semana_actual)
 
     if reserva:
@@ -150,12 +147,11 @@ Pista: {pista}"""
     driver.execute_script(f"""
     document.getElementById('calendario-selector-semana').value = '{fecha_str}';
     """)
-
     driver.execute_script("$('#calendario-selector-semana').trigger('change');")
 
     time.sleep(3)
 
-    # ========= CHECK FUTURA =========
+    # ========= CHECK SEMANA SIGUIENTE =========
     reserva = detectar_reserva_existente(semana_siguiente)
 
     if reserva:
@@ -173,7 +169,7 @@ Pista: {pista}"""
         driver.quit()
         continue
 
-    # ========= INTENTO =========
+    # ========= INTENTAR RESERVA =========
     def intentar_reserva(dia, pista_id):
         try:
             pista_nombre = "Pista 2" if pista_id == "pista-58" else "Pista 1"
@@ -222,7 +218,7 @@ Pista: {pista_nombre}"""
         except:
             return False
 
-    # ========= COMPETITIVO =========
+    # ========= MODO COMPETITIVO =========
     dias = ["martes", "miercoles", "jueves", "lunes"]
 
     inicio = time.time()
