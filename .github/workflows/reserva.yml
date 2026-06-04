@@ -2,7 +2,16 @@ name: Reserva Padel
 
 on:
   schedule:
-    - cron: '50 21 * * *'
+    # 🧠 pre-carga antes de medianoche
+    - cron: '50 21 * * *'   # 23:50 local
+
+    # 🔥 ventana crítica
+    - cron: '58 21 * * *'   # 23:58 local
+    - cron: '59 21 * * *'   # 23:59 local
+    - cron: '0 22 * * *'    # 00:00 local
+    - cron: '1 22 * * *'    # 00:01 local
+    - cron: '2 22 * * *'    # 00:02 local
+
   workflow_dispatch:
 
 jobs:
@@ -22,7 +31,7 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Instalando Chrome
+      - name: Instalar Chrome
         uses: browser-actions/setup-chrome@v1
 
       - name: Ejecutar script
