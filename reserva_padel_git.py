@@ -107,8 +107,12 @@ def detectar_reserva_existente(semana_base):
                 fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
 
                 if fecha >= ahora:
-                    return (dia, f"{hora[:2]}:{hora[2:]}", pista_nombre)
-
+                    return (
+                        dia,
+                        f"{hora[:2]}:{hora[2:]}",
+                        pista_nombre,
+                        fecha.strftime("%d/%m")
+                    )
         except:
             continue
 
@@ -118,12 +122,12 @@ def detectar_reserva_existente(semana_base):
 reserva = detectar_reserva_existente(semana_actual)
 
 if reserva:
-    dia, hora, pista = reserva
+    dia, hora, pista, fecha = reserva
 
     mensaje = f"""⚠️ YA TENES RESERVA
 Horario ejecución: {hora_ejecucion}
 
-Día: {dia}
+Día: {dia} ({fecha})
 Hora: {hora}
 Pista: {pista}"""
 
@@ -146,12 +150,12 @@ time.sleep(3)
 reserva = detectar_reserva_existente(semana_siguiente)
 
 if reserva:
-    dia, hora, pista = reserva
+    dia, hora, pista, fecha = reserva
 
     mensaje = f"""⚠️ YA TENES RESERVA
 Horario ejecución: {hora_ejecucion}
 
-Día: {dia}
+Día: {dia} ({fecha})
 Hora: {hora}
 Pista: {pista}"""
 
@@ -183,10 +187,19 @@ def intentar_reserva(dia, pista_id):
         time.sleep(0.8)
 
         if "reservada-usuario" in slot.get_attribute("class"):
+
+            dias_map = {
+                "lunes": 0, "martes": 1, "miercoles": 2,
+                "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
+            }
+
+            fecha = semana_siguiente + datetime.timedelta(days=dias_map[dia])
+            fecha_fmt = fecha.strftime("%d/%m")
+
             mensaje = f"""✅ RESERVA CONFIRMADA
 Horario ejecución: {hora_ejecucion}
 
-Día: {dia}
+Día: {dia} ({fecha_fmt})
 Hora: 20:30
 Pista: {pista_nombre}"""
 
@@ -198,7 +211,7 @@ Pista: {pista_nombre}"""
     except:
         return False
 
-# ========= COMPETITIVO =========
+# ========= MODO COMPETITIVO =========
 dias = ["martes", "miercoles", "jueves", "lunes"]
 
 inicio = time.time()
