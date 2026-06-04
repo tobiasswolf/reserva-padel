@@ -1,7 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
-
 import time
 import datetime
 import os
@@ -17,7 +16,6 @@ URL = "https://ociopadel.es"
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
 usuarios = json.loads(os.getenv("USERS_JSON"))
 
 # ========= LOG =========
@@ -32,7 +30,7 @@ def enviar_telegram(mensaje):
             data={"chat_id": CHAT_ID, "text": mensaje}
         )
     except Exception as e:
-        print("❌ Telegram error:", e)
+        log(f"❌ Telegram error: {e}")
 
 hora_ejecucion = datetime.datetime.now().strftime("%H:%M")
 
@@ -45,7 +43,6 @@ options.add_argument("--no-sandbox")
 # ========= FECHA =========
 hoy = datetime.datetime.now()
 target_day = hoy + datetime.timedelta(days=7)
-
 semana_actual = hoy - datetime.timedelta(days=hoy.weekday())
 semana_siguiente = semana_actual + datetime.timedelta(days=7)
 
@@ -54,17 +51,17 @@ dias_map = {
     "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
 }
 
-# ========= LOOP USUARIOS =========
+# ========= LOOP =========
 for user in usuarios:
 
     USERNAME = user["username"]
     PASSWORD = user["password"]
     CODIGO = user["codigo"].lower()
 
-    log(f"Usuario: {USERNAME}")
+    log(f"👤 Usuario: {USERNAME}")
 
     driver = webdriver.Chrome(options=options)
-    wait = WebDriverWait(driver, 10)
+    wait = WebDriverWait(driver, 15)
     actions = ActionChains(driver)
 
     driver.get(URL)
@@ -86,7 +83,12 @@ for user in usuarios:
 
     time.sleep(5)
 
-    # ========= DETECCIÓN REAL =========
+    # ✅ esperar calendario
+    log("Esperando calendario...")
+    wait.until(EC.presence_of_element_located((By.CLASS_NAME, "celda")))
+    log("✅ Calendario cargado")
+
+    # ========= DETECCIÓN =========
     def detectar_reserva(semana_base):
 
         pistas = [("pista-58", "Pista 2"), ("pista-30", "Pista 1")]
@@ -94,6 +96,8 @@ for user in usuarios:
 
         for pista_id, pista_nombre in pistas:
             try:
+                log(f"🎾 Revisando {pista_nombre}")
+
                 driver.find_element(By.ID, pista_id).click()
                 time.sleep(1.5)
 
@@ -117,18 +121,18 @@ for user in usuarios:
                         if fecha < ahora:
                             continue
 
-                        # ✅ HOVER
+                        # ✅ Hover
                         actions.move_to_element(c).perform()
                         time.sleep(1)
 
-                        # ✅ POPOVER
+                        # ✅ Popover
                         try:
                             pop = wait.until(
                                 EC.presence_of_element_located((By.CLASS_NAME, "popover-body"))
                             )
-                            texto = pop.text.strip().lower()
 
-                            log(f"Popup detectado: {texto}")
+                            texto = pop.text.strip().lower()
+                            log(f"🔎 Popover: {texto}")
 
                             if CODIGO in texto:
                                 log("✅ RESERVA PROPIA DETECTADA")
@@ -151,26 +155,38 @@ for user in usuarios:
 
         return None
 
-    # ---------- SEMANA ACTUAL ----------
+    # ========= SEMANA ACTUAL =========
     reserva = detectar_reserva(semana_actual)
 
-    # ---------- SEMANA SIGUIENTE ----------
+    # ========= CAMBIO SEMANA =========
     if not reserva:
-        log("Cambio a semana siguiente")
+
+        log("➡️ Cambiando a semana siguiente...")
 
         fecha_str = target_day.strftime("%d/%m/%Y")
 
-        driver.execute_script(f"""
-        document.getElementById('calendario-selector-semana').value = '{fecha_str}';
-        """)
-        driver.execute_script("$('#calendario-selector-semana').trigger('change');")
+        try:
+            selector = wait.until(
+                EC.presence_of_element_located((By.ID, "calendario-selector-semana"))
+            )
+
+            driver.execute_script("""
+                arguments[0].value = arguments[1];
+                arguments[0].dispatchEvent(new Event('change'));
+            """, selector, fecha_str)
+
+            log("✅ Cambio de semana OK")
+
+        except Exception as e:
+            log(f"❌ Error cambio semana: {e}")
 
         time.sleep(4)
 
         reserva = detectar_reserva(semana_siguiente)
 
-    # ---------- RESULTADO ----------
+    # ========= RESULTADO =========
     if reserva:
+
         dia, hora, pista, fecha = reserva
 
         mensaje = f"""⚠️ YA TENES RESERVA
@@ -181,10 +197,12 @@ Día: {dia} ({fecha})
 Hora: {hora}
 Pista: {pista}"""
 
+        log("📩 Enviando Telegram (reserva encontrada)")
         enviar_telegram(mensaje)
 
     else:
-        log("❌ No se encontró reserva")
+
+        log("❌ NO se encontró reserva")
 
         mensaje = f"""❌ NO SE ENCONTRÓ DISPONIBILIDAD
 Usuario: {USERNAME}
