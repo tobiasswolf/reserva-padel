@@ -19,6 +19,7 @@ options.add_argument("--window-size=1920,1080")
 options.add_argument("--no-sandbox")
 
 hoy = datetime.datetime.now()
+target_day = hoy + datetime.timedelta(days=7)
 
 semana_actual = hoy - datetime.timedelta(days=hoy.weekday())
 
@@ -27,9 +28,10 @@ dias_map = {
     "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6
 }
 
+# ========= LOOP USUARIOS =========
 for user in usuarios:
 
-    print("\n========================")
+    print("\n\n========================")
     print(f"👤 Usuario: {user['username']}")
     print("========================")
 
@@ -58,45 +60,76 @@ for user in usuarios:
 
     time.sleep(5)
 
-    pistas = [("pista-58", "Pista 2"), ("pista-30", "Pista 1")]
+    # ========= FUNCIÓN DEBUG =========
+    def debug_semana(nombre):
 
-    for pista_id, pista_nombre in pistas:
+        print(f"\n===== 📅 DEBUG {nombre} =====")
 
-        print(f"\n🎾 Revisando {pista_nombre}")
+        pistas = [("pista-58", "Pista 2"), ("pista-30", "Pista 1")]
 
-        try:
-            driver.find_element(By.ID, pista_id).click()
-            time.sleep(2)
+        for pista_id, pista_nombre in pistas:
 
-            # ✅ TODAS las reservas
-            todas = driver.find_elements(By.XPATH, "//div[contains(@class,'celda')]")
+            print(f"\n🎾 {pista_nombre}")
 
-            print(f"Total celdas: {len(todas)}")
+            try:
+                driver.find_element(By.ID, pista_id).click()
+                time.sleep(2)
 
-            for r in todas:
-                try:
-                    clase = r.get_attribute("class")
-                    dia = r.get_attribute("data-dia")
-                    hora = r.get_attribute("data-hora")
+                celdas = driver.find_elements(By.XPATH, "//div[contains(@class,'celda')]")
 
-                    if not dia or not hora:
+                print(f"Total celdas: {len(celdas)}")
+
+                for c in celdas:
+                    try:
+                        clase = c.get_attribute("class")
+                        dia = c.get_attribute("data-dia")
+                        hora = c.get_attribute("data-hora")
+
+                        if not dia or not hora:
+                            continue
+
+                        # 🔥 FILTRO SOLO 20:30 (para no saturar)
+                        if hora != "2030":
+                            continue
+
+                        fecha = semana_base + datetime.timedelta(days=dias_map[dia])
+                        hora_dt = datetime.datetime.strptime(hora, "%H%M")
+                        fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
+
+                        print(f"""
+   📦 CLASE: {clase}
+   📅 {dia} {hora}
+   🧠 Fecha: {fecha}
+""")
+
+                        # 🔥 VER HTML COMPLETO (CLAVE)
+                        html = c.get_attribute("outerHTML")
+                        print(f"   🔎 HTML: {html[:120]}...")  # recortado para no explotar log
+
+                    except:
                         continue
 
-                    print(f"\n   📦 CLASE: {clase}")
-                    print(f"   📅 {dia} {hora}")
+            except Exception as e:
+                print("❌ Error pista:", e)
 
-                    # construir fecha
-                    fecha = semana_actual + datetime.timedelta(days=dias_map[dia])
-                    hora_dt = datetime.datetime.strptime(hora, "%H%M")
+    # ========= SEMANA ACTUAL =========
+    semana_base = semana_actual
+    debug_semana("SEMANA ACTUAL")
 
-                    fecha = fecha.replace(hour=hora_dt.hour, minute=hora_dt.minute)
+    # ========= CAMBIO A SEMANA SIGUIENTE =========
+    print("\n🔁 CAMBIANDO A SEMANA SIGUIENTE...")
 
-                    print(f"   🧠 Fecha: {fecha}")
+    fecha_str = target_day.strftime("%d/%m/%Y")
 
-                except Exception as e:
-                    continue
+    driver.execute_script(f"""
+    document.getElementById('calendario-selector-semana').value = '{fecha_str}';
+    """)
+    driver.execute_script("$('#calendario-selector-semana').trigger('change');")
 
-        except Exception as e:
-            print("❌ Error pista:", e)
+    time.sleep(4)
+
+    # ========= SEMANA SIGUIENTE =========
+    semana_base = semana_actual + datetime.timedelta(days=7)
+    debug_semana("SEMANA SIGUIENTE")
 
     driver.quit()
