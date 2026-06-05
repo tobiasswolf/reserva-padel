@@ -3,14 +3,7 @@ name: Reserva Padel
 on:
   schedule:
     # 🧠 pre-carga antes de medianoche
-    - cron: '50 21 * * *'   # 23:50 local
-
-    # 🔥 ventana crítica
-    - cron: '58 21 * * *'   # 23:58 local
-    - cron: '59 21 * * *'   # 23:59 local
-    - cron: '0 22 * * *'    # 00:00 local
-    - cron: '1 22 * * *'    # 00:01 local
-    - cron: '2 22 * * *'    # 00:02 local
+    - cron: '51 21 * * *'   # 23:50 local
 
   workflow_dispatch:
 
