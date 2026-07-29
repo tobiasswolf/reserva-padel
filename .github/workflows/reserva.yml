@@ -3,7 +3,7 @@ name: Reserva Padel
 on:
   schedule:
     # 🧠 pre-carga antes de medianoche
-    - cron: '51 21 * * *'   # 23:50 local
+    - cron: '21 21 * * *'   # 23:50 local
 
   workflow_dispatch:
 
